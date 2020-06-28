@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width" />
+
+
+    <link rel="stylesheet" href="styles.css">
+    <style>
+      body { font-family: Tahoma, Geneva, sans-serif; }
+    </style>
+
+    <!-- colyseus.js client -->
+    <script type="text/javascript" src="https://raw.githack.com/colyseus/colyseus.js/master/dist/colyseus.js"></script>
+
+  </head>
+  <body>
+    <h1>
+      <a href="https://github.com/colyseus/colyseus-examples"><img src="https://cdn.jsdelivr.net/gh/colyseus/colyseus@master/media/header.png" height="100" alt="colyseus" /></a>
+    </h1>
+
+    <div class="divTable" style="width: 80%; border: 2px solid #000;" id="lobbyTable">
+      <div class="divTableBody" id="tableBody">
+        <div class="divTableRow">
+          <div class="divTableReadyCell">Ready</div>
+          <div class="divTableNameCell">Player</div>
+          <div class="divTableGroupCell">Group</div>
+          <div class="divTablePointCell">Points</div>
+        </div>
+      </div>
+    </div>
+
+    <p></p>
+    <p></p>
+
+    <button onclick="leave()">leave lobby</button>
+
+    <script>
+      var host = window.document.location.host.replace(/:.*/, '');
+      var row_id = "headingRow"
+
+      var client = new Colyseus.Client(location.protocol.replace("http", "ws") + "//" + host + (location.port ? ':' + location.port : ''));
+      var room;
+
+      var group_list = [];
+      client.joinOrCreate("lobby").then(room_instance => {
+        room = room_instance
+        var players = {};
+        var this_player;
+
+        // listen to patches coming from the server
+        // room.onMessage("game_start", function(message) {
+        //     if (message == "0") {
+        //       document.body.style.background = 'white';
+        //     }
+        //     else if (message == "1") {
+        //       document.body.style.background = 'green';
+        //     }
+        //     else if (message == "2") {
+        //       document.body.style.background = 'red';
+        //     }
+        //     else {
+        //       room.send("error", { error_code: "1"});
+        //     }
+        // });
+
+        room.onMessage("group_request", function(message) {
+          console.log(room.sessionId + " has requested to join group with " + selectId);
+          if(confirm(message["Id"] + " has asked to join your group?") == true) {
+            room.send("group_confirm", {Group:message["Group"]});
+          } else {
+            room.send("group_decline", {Group:message["Group"]});
+          }
+        })
+
+        room.onMessage("group_full", function() {
+          alert("Your group is full.");
+        })
+
+        room.state.players.onAdd = function (player, sessionId) {
+          var dom = document.createElement("div");
+          dom.className = "divTableRow";
+          dom.innerHTML = '<div class="divTableReadyCell"><button class=\
+            "readyButton" id=' + sessionId + '_readyButton onclick="box_check(this.id)"\
+             style="background-color:red;" disabled=true>\
+             Ready </button></div><div class="divTableNameCell">' + sessionId + '</div>\
+             <div class="divTableGroupCell" id=' + sessionId + '_group><span id=' + sessionId +
+              '_groupNumber></span><button class=\
+             "groupButton" id=' + sessionId + '_groupButton onclick="group_request(this.id)"\
+             disabled=true>+</button></div><div class="divTablePointCell" id=' + sessionId + '\
+             _points>&nbsp;</div>'
+          dom.id = sessionId;
+          players[sessionId] = dom;
+          document.getElementById("tableBody").appendChild(dom);
+          // set_buttons(room.state.players);
+        }
+
+        room.state.players.onRemove = function (player, sessionId) {
+          console.log("Removed player " + sessionId)
+          var element = document.getElementById(sessionId);
+          element.parentNode.removeChild(element);
+          delete players[sessionId];
+        }
+
+        room.state.players.onChange = function (player, sessionId) {
+          console.log(sessionId + ' has changed ready state');
+          set_buttons(room.state.players);
+        }
+      });
+
+      function box_check(buttonId) {
+        // var slice_pos = buttonId.lastIndexOf("_");
+        // var selectId = buttonId.slice(0,slice_pos);
+        room.send("check",{"Id": buttonId});
+      }
+
+      function set_buttons(players) {
+        console.log(room.sessionId);
+        ready_buttons = document.getElementsByClassName("readyButton");
+        group_buttons = document.getElementsByClassName("groupButton");
+        if(players[ room.sessionId ].ready) {
+          for (i = 0; i < ready_buttons.length; i++) {
+            var slice_pos = ready_buttons[i].id.lastIndexOf("_");
+            var selectId = ready_buttons[i].id.slice(0,slice_pos);
+            ready_buttons[i].disabled = true;
+            group_buttons[i].disabled = true;
+            if (players[ selectId ].ready) {
+              ready_buttons[i].style.backgroundColor = "green";
+            } else {
+              ready_buttons[i].style.backgroundColor = "red";
+            }
+            if (players[ selectId ].group > -1) {
+              document.getElementById(selectId + "_groupNumber").textContent=players[ selectId ].group;
+            } else {
+              document.getElementById(selectId + "_groupNumber").textContent="";
+            }
+          }
+          document.getElementById(room.sessionId + "_readyButton").disabled = false;
+          document.getElementById(room.sessionId + "_readyButton").style.backgroundColor = "green";
+        } else {
+          for (i = 0; i < ready_buttons.length; i++) {
+            var slice_pos = ready_buttons[i].id.lastIndexOf("_");
+            var selectId = ready_buttons[i].id.slice(0,slice_pos);
+            ready_buttons[i].disabled = true;
+            if (players[ selectId ].ready) {
+              ready_buttons[i].style.backgroundColor = "green";
+            } else {
+              ready_buttons[i].style.backgroundColor = "red";
+            }
+            // console.log("yo");
+
+            if (players[ selectId ].group_willing && !(selectId in group_list)) {
+              group_buttons[i].disabled = false;
+              if (selectId == room.sessionId) {
+                group_buttons[i].innerText = "-";
+              }
+            } else {
+              group_buttons[i].disabled = true;
+            }
+          }
+          document.getElementById(room.sessionId + "_readyButton").disabled = false;
+          document.getElementById(room.sessionId + "_groupButton").disabled = false;
+          document.getElementById(room.sessionId + "_readyButton").style.backgroundColor = "red";
+        }
+      }
+
+      function group_request(buttonId) {
+        var slice_pos = buttonId.lastIndexOf("_");
+        var selectId = buttonId.slice(0,slice_pos);
+        if (selectId == room.sessionId) {
+          room.send("group_swap");
+        } else {
+          console.log(room.sessionId + " has requested to join group with " + selectId);
+          
+          room.send("group_request",{Id: selectId});
+          group_list.push(selectId);
+        }
+      }
+
+      function leave() {
+        window.location.href = "/";
+      }
+    </script>
+  </body>
+</html>
